@@ -1,0 +1,276 @@
+import json
+import os
+
+def build_notebook():
+    notebook_path = os.path.join("notebooks", "telco_customer_churn.ipynb")
+    
+    cells = [
+        {
+            "cell_type": "markdown",
+            "metadata": {},
+            "source": [
+                "# Telco Customer Churn Prediction\n",
+                "**ACM SIG AI Recruitment Task**  \n",
+                "End-to-End Machine Learning Pipeline: EDA, Preprocessing, Stratified Splitting, Logistic Regression, Threshold Tuning, and Subgroup Error Analysis."
+            ]
+        },
+        {
+            "cell_type": "markdown",
+            "metadata": {},
+            "source": [
+                "## Phase 1 & 2: Environment Setup, Dataset Loading & Verification"
+            ]
+        },
+        {
+            "cell_type": "code",
+            "execution_count": None,
+            "metadata": {},
+            "outputs": [],
+            "source": [
+                "import os\n",
+                "import pandas as pd\n",
+                "import numpy as np\n",
+                "import matplotlib.pyplot as plt\n",
+                "import seaborn as sns\n",
+                "import joblib\n",
+                "\n",
+                "# Set matplotlib inline style\n",
+                "sns.set_theme(style='whitegrid', palette='muted')\n",
+                "%matplotlib inline\n",
+                "\n",
+                "# Load raw dataset\n",
+                "raw_csv = os.path.join('..', 'data', 'WA_Fn-UseC_-Telco-Customer-Churn.csv')\n",
+                "if not os.path.exists(raw_csv):\n",
+                "    raw_csv = os.path.join('data', 'WA_Fn-UseC_-Telco-Customer-Churn.csv')\n",
+                "\n",
+                "df = pd.read_csv(raw_csv)\n",
+                "print('Dataset Shape:', df.shape)"
+            ]
+        },
+        {
+            "cell_type": "markdown",
+            "metadata": {},
+            "source": [
+                "## Phase 3: Exploratory Data Analysis (EDA) & Visualizations"
+            ]
+        },
+        {
+            "cell_type": "code",
+            "execution_count": None,
+            "metadata": {},
+            "outputs": [],
+            "source": [
+                "# Fix TotalCharges data type\n",
+                "df['TotalCharges'] = pd.to_numeric(df['TotalCharges'], errors='coerce')\n",
+                "\n",
+                "# Target Distribution\n",
+                "print('Churn Distribution:')\n",
+                "print(df['Churn'].value_counts(normalize=True) * 100)\n",
+                "\n",
+                "# Numerical Summary by Churn\n",
+                "print('\\nNumerical Feature Means by Churn:')\n",
+                "print(df.groupby('Churn')[['tenure', 'MonthlyCharges', 'TotalCharges']].mean())\n",
+                "\n",
+                "# Plot Numerical Distributions\n",
+                "fig, axes = plt.subplots(1, 3, figsize=(16, 4.5))\n",
+                "num_cols = ['tenure', 'MonthlyCharges', 'TotalCharges']\n",
+                "for i, col in enumerate(num_cols):\n",
+                "    sns.kdeplot(data=df, x=col, hue='Churn', common_norm=False, fill=True, ax=axes[i], palette=['#2ecc71', '#e74c3c'])\n",
+                "    axes[i].set_title(f'Distribution of {col}', fontweight='bold')\n",
+                "plt.tight_layout()\n",
+                "plt.show()\n",
+                "\n",
+                "# Plot Categorical Churn Rates\n",
+                "fig, axes = plt.subplots(1, 2, figsize=(12, 4.5))\n",
+                "sns.barplot(data=df, x='Contract', y=(df['Churn']=='Yes').astype(int), hue='Contract', ax=axes[0], palette='Reds_r', errorbar=None, legend=False)\n",
+                "axes[0].set_title('Churn Rate by Contract Type', fontweight='bold')\n",
+                "axes[0].set_ylim(0, 0.5)\n",
+                "for p in axes[0].patches:\n",
+                "    axes[0].annotate(f'{p.get_height()*100:.1f}%', (p.get_x() + p.get_width() / 2., p.get_height()), ha='center', va='bottom')\n",
+                "\n",
+                "sns.barplot(data=df, x='InternetService', y=(df['Churn']=='Yes').astype(int), hue='InternetService', ax=axes[1], palette='Oranges_r', errorbar=None, legend=False)\n",
+                "axes[1].set_title('Churn Rate by Internet Service', fontweight='bold')\n",
+                "axes[1].set_ylim(0, 0.5)\n",
+                "for p in axes[1].patches:\n",
+                "    axes[1].annotate(f'{p.get_height()*100:.1f}%', (p.get_x() + p.get_width() / 2., p.get_height()), ha='center', va='bottom')\n",
+                "plt.tight_layout()\n",
+                "plt.show()"
+            ]
+        },
+        {
+            "cell_type": "markdown",
+            "metadata": {},
+            "source": [
+                "## Phase 4: Data Preprocessing & ColumnTransformer Pipeline"
+            ]
+        },
+        {
+            "cell_type": "code",
+            "execution_count": None,
+            "metadata": {},
+            "outputs": [],
+            "source": [
+                "from sklearn.compose import ColumnTransformer\n",
+                "from sklearn.pipeline import Pipeline\n",
+                "from sklearn.impute import SimpleImputer\n",
+                "from sklearn.preprocessing import StandardScaler, OneHotEncoder\n",
+                "\n",
+                "num_cols = ['tenure', 'MonthlyCharges', 'TotalCharges']\n",
+                "cat_cols = [\n",
+                "    'gender', 'SeniorCitizen', 'Partner', 'Dependents', \n",
+                "    'PhoneService', 'MultipleLines', 'InternetService', \n",
+                "    'OnlineSecurity', 'OnlineBackup', 'DeviceProtection', \n",
+                "    'TechSupport', 'StreamingTV', 'StreamingMovies', \n",
+                "    'Contract', 'PaperlessBilling', 'PaymentMethod'\n",
+                "]\n",
+                "\n",
+                "preprocessor = ColumnTransformer([\n",
+                "    ('num', Pipeline([('imputer', SimpleImputer(strategy='median')), ('scaler', StandardScaler())]), num_cols),\n",
+                "    ('cat', Pipeline([('imputer', SimpleImputer(strategy='most_frequent')), ('encoder', OneHotEncoder(handle_unknown='ignore', sparse_output=False))]), cat_cols)\n",
+                "])\n",
+                "\n",
+                "print('Preprocessor constructed successfully.')"
+            ]
+        },
+        {
+            "cell_type": "markdown",
+            "metadata": {},
+            "source": [
+                "## Phase 5: Stratified Train / Validation / Test Splitting"
+            ]
+        },
+        {
+            "cell_type": "code",
+            "execution_count": None,
+            "metadata": {},
+            "outputs": [],
+            "source": [
+                "from sklearn.model_selection import train_test_split\n",
+                "\n",
+                "X = df[num_cols + cat_cols]\n",
+                "y = df['Churn'].map({'Yes': 1, 'No': 0})\n",
+                "\n",
+                "# 70/15/15 Stratified Split\n",
+                "X_train_val, X_test, y_train_val, y_test = train_test_split(X, y, test_size=0.15, stratify=y, random_state=42)\n",
+                "X_train, X_val, y_train, y_val = train_test_split(X_train_val, y_train_val, test_size=0.15/0.85, stratify=y_train_val, random_state=42)\n",
+                "\n",
+                "print('Train shape :', X_train.shape, '| Churn rate:', round(y_train.mean()*100, 2), '%')\n",
+                "print('Val shape   :', X_val.shape, '| Churn rate:', round(y_val.mean()*100, 2), '%')\n",
+                "print('Test shape  :', X_test.shape, '| Churn rate:', round(y_test.mean()*100, 2), '%')"
+            ]
+        },
+        {
+            "cell_type": "markdown",
+            "metadata": {},
+            "source": [
+                "## Phase 6 & 7: Model Training, Threshold Tuning & Test Evaluation Plots"
+            ]
+        },
+        {
+            "cell_type": "code",
+            "execution_count": None,
+            "metadata": {},
+            "outputs": [],
+            "source": [
+                "from sklearn.linear_model import LogisticRegression\n",
+                "from sklearn.metrics import classification_report, f1_score, precision_recall_curve, auc, confusion_matrix\n",
+                "\n",
+                "# Create & Fit Pipeline\n",
+                "model_pipeline = Pipeline([\n",
+                "    ('preprocessor', preprocessor),\n",
+                "    ('classifier', LogisticRegression(class_weight='balanced', max_iter=1000, random_state=42))\n",
+                "])\n",
+                "model_pipeline.fit(X_train, y_train)\n",
+                "\n",
+                "# Threshold Tuning on Validation Split ONLY\n",
+                "val_probas = model_pipeline.predict_proba(X_val)[:, 1]\n",
+                "best_t, best_val_f1 = 0.50, 0.0\n",
+                "for t in np.linspace(0.10, 0.90, 81):\n",
+                "    score = f1_score(y_val, (val_probas >= t).astype(int))\n",
+                "    if score > best_val_f1:\n",
+                "        best_val_f1 = score\n",
+                "        best_t = t\n",
+                "\n",
+                "print('Optimal Threshold Selected on Validation:', round(best_t, 2))\n",
+                "\n",
+                "# Final Evaluation on Test Set\n",
+                "test_probas = model_pipeline.predict_proba(X_test)[:, 1]\n",
+                "test_preds = (test_probas >= best_t).astype(int)\n",
+                "\n",
+                "test_prec_arr, test_rec_arr, _ = precision_recall_curve(y_test, test_probas)\n",
+                "test_pr_auc = auc(test_rec_arr, test_prec_arr)\n",
+                "\n",
+                "print('\\nTest Classification Report:')\n",
+                "print(classification_report(y_test, test_preds, target_names=['Retained', 'Churned']))\n",
+                "print(f'Test PR-AUC: {test_pr_auc:.4f}')\n",
+                "\n",
+                "# Plot Confusion Matrix Heatmap\n",
+                "fig, axes = plt.subplots(1, 2, figsize=(13, 5))\n",
+                "cm = confusion_matrix(y_test, test_preds)\n",
+                "sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', cbar=False, ax=axes[0],\n",
+                "            xticklabels=['Retained (0)', 'Churned (1)'], yticklabels=['Retained (0)', 'Churned (1)'])\n",
+                "axes[0].set_title(f'Confusion Matrix (Test Set, Threshold = {best_t:.2f})', fontweight='bold')\n",
+                "axes[0].set_xlabel('Predicted Label')\n",
+                "axes[0].set_ylabel('True Label')\n",
+                "\n",
+                "# Plot Precision-Recall Curve\n",
+                "axes[1].plot(test_rec_arr, test_prec_arr, color='#2980b9', lw=2, label=f'Logistic Regression (PR-AUC = {test_pr_auc:.3f})')\n",
+                "axes[1].axhline(y=y_test.mean(), color='red', linestyle='--', label=f'Baseline (No Skill = {y_test.mean():.3f})')\n",
+                "axes[1].set_title('Precision-Recall Curve (Test Set)', fontweight='bold')\n",
+                "axes[1].set_xlabel('Recall')\n",
+                "axes[1].set_ylabel('Precision')\n",
+                "axes[1].legend(loc='lower left')\n",
+                "plt.tight_layout()\n",
+                "plt.show()"
+            ]
+        },
+        {
+            "cell_type": "markdown",
+            "metadata": {},
+            "source": [
+                "## Phase 8 & 9: Subgroup Error Analysis"
+            ]
+        },
+        {
+            "cell_type": "code",
+            "execution_count": None,
+            "metadata": {},
+            "outputs": [],
+            "source": [
+                "# Subgroup Error Analysis by Contract Type\n",
+                "test_df_analysis = X_test.copy()\n",
+                "test_df_analysis['Actual_Churn'] = y_test\n",
+                "test_df_analysis['Predicted_Churn'] = test_preds\n",
+                "\n",
+                "print('--- ERROR RATES BY CONTRACT TYPE ---')\n",
+                "for contract, group in test_df_analysis.groupby('Contract'):\n",
+                "    total = len(group)\n",
+                "    fn = ((group['Actual_Churn'] == 1) & (group['Predicted_Churn'] == 0)).sum()\n",
+                "    fp = ((group['Actual_Churn'] == 0) & (group['Predicted_Churn'] == 1)).sum()\n",
+                "    actual_churned = (group['Actual_Churn'] == 1).sum()\n",
+                "    actual_retained = (group['Actual_Churn'] == 0).sum()\n",
+                "    fpr_str = f'{fp/actual_retained:.1%}' if actual_retained > 0 else '0%'\n",
+                "    fnr_str = f'{fn/actual_churned:.1%}' if actual_churned > 0 else '0%'\n",
+                "    print(f'Contract: {contract:15s} | Total: {total:3d} | FPR: {fpr_str:6s} | FNR: {fnr_str:6s}')"
+            ]
+        }
+    ]
+    
+    nb_content = {
+        "cells": cells,
+        "metadata": {
+            "language_info": {
+                "name": "python"
+            }
+        },
+        "nbformat": 4,
+        "nbformat_minor": 2
+    }
+    
+    with open(notebook_path, "w", encoding="utf-8") as f:
+        json.dump(nb_content, f, indent=2)
+        
+    print(f"Created executable notebook with inline plots at {notebook_path}")
+
+if __name__ == '__main__':
+    build_notebook()
